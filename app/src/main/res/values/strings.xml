@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">MobilePractice</string>
-    <string name="my_info">성신여대, AI 융합학부, 한유빈</string>
+    <string name="edt_hint">글자를 입력하세요</string>
 </resources>
