@@ -1,4 +1,16 @@
 <resources>
     <string name="app_name">MobilePractice</string>
     <string name="edt_hint">글자를 입력하세요</string>
+
+    <!-- 5주차 퀴즈2: 초간단 계산기 -->
+    <string name="calc_title">초간단 계산기</string>
+    <string name="calc_hint1">숫자1</string>
+    <string name="calc_hint2">숫자2</string>
+    <string name="calc_add">더하기</string>
+    <string name="calc_sub">빼기</string>
+    <string name="calc_mul">곱하기</string>
+    <string name="calc_div">나누기</string>
+    <string name="calc_pow">거듭제곱</string>
+    <string name="calc_clear">C</string>
+    <string name="calc_result">"계산 결과 : "</string>
 </resources>
