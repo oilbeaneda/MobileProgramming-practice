@@ -1,0 +1,1058 @@
+From 91baf232b9475c3e0fac01e31aeb456c8e1b232e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 12:02:20 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?[=EB=A1=9C=EA=B7=B8=EC=9D=B8]=20=ED=99=94?=
+ =?UTF-8?q?=EB=A9=B4=EB=B3=84=20=ED=8F=B4=EB=8D=94=20=EA=B5=AC=EC=84=B1=20?=
+ =?UTF-8?q?=EB=B0=8F=20SharedPreferences=20=EB=A1=9C=EA=B7=B8=EC=9D=B8?=
+ =?UTF-8?q?=C2=B7=ED=9A=8C=EC=9B=90=EA=B0=80=EC=9E=85=20=EA=B5=AC=ED=98=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- ui/(login, main, home, record, receipt, challenge, setting), data/local, util 패키지 생성
+- 로그인(LOGIN-01)·회원가입(LOGIN-02) 레이아웃, 공통 상단 바 include
+- 계정은 SharedPreferences에 저장, 비밀번호는 salt + SHA-256 해시로 저장
+- 자동 로그인, 입력 오류 안내, 로그인 실패 대화상자
+- 입력 검사·비밀번호 해시 단위 테스트 추가
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ArsEsm3AuEXGAQNinsMBEa
+---
+ app/build.gradle.kts                          |   3 +
+ app/src/main/AndroidManifest.xml              |  10 +-
+ .../java/com/app/jjanchall/MainActivity.kt    |  20 ---
+ .../jjanchall/data/local/AuthPreferences.kt   |  78 ++++++++++
+ .../com/app/jjanchall/ui/challenge/.gitkeep   |   0
+ .../java/com/app/jjanchall/ui/home/.gitkeep   |   0
+ .../app/jjanchall/ui/login/LoginActivity.kt   |  87 +++++++++++
+ .../app/jjanchall/ui/login/SignupActivity.kt  | 107 +++++++++++++
+ .../com/app/jjanchall/ui/main/MainActivity.kt |  51 +++++++
+ .../com/app/jjanchall/ui/receipt/.gitkeep     |   0
+ .../java/com/app/jjanchall/ui/record/.gitkeep |   0
+ .../com/app/jjanchall/ui/setting/.gitkeep     |   0
+ .../com/app/jjanchall/util/AuthValidator.kt   |  24 +++
+ .../java/com/app/jjanchall/util/Insets.kt     |  18 +++
+ .../com/app/jjanchall/util/PasswordHasher.kt  |  33 +++++
+ app/src/main/res/layout/activity_login.xml    | 140 ++++++++++++++++++
+ app/src/main/res/layout/activity_main.xml     |  39 +++--
+ app/src/main/res/layout/activity_signup.xml   | 140 ++++++++++++++++++
+ app/src/main/res/layout/view_app_bar.xml      |  34 +++++
+ .../app/jjanchall/util/AuthValidatorTest.kt   |  39 +++++
+ .../app/jjanchall/util/PasswordHasherTest.kt  |  33 +++++
+ 21 files changed, 825 insertions(+), 31 deletions(-)
+ delete mode 100644 app/src/main/java/com/app/jjanchall/MainActivity.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/data/local/AuthPreferences.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/challenge/.gitkeep
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/home/.gitkeep
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/login/LoginActivity.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/login/SignupActivity.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/main/MainActivity.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/receipt/.gitkeep
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/record/.gitkeep
+ create mode 100644 app/src/main/java/com/app/jjanchall/ui/setting/.gitkeep
+ create mode 100644 app/src/main/java/com/app/jjanchall/util/AuthValidator.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/util/Insets.kt
+ create mode 100644 app/src/main/java/com/app/jjanchall/util/PasswordHasher.kt
+ create mode 100644 app/src/main/res/layout/activity_login.xml
+ create mode 100644 app/src/main/res/layout/activity_signup.xml
+ create mode 100644 app/src/main/res/layout/view_app_bar.xml
+ create mode 100644 app/src/test/java/com/app/jjanchall/util/AuthValidatorTest.kt
+ create mode 100644 app/src/test/java/com/app/jjanchall/util/PasswordHasherTest.kt
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index e5d6c4b..2ed7738 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -30,6 +30,9 @@ android {
+         sourceCompatibility = JavaVersion.VERSION_11
+         targetCompatibility = JavaVersion.VERSION_11
+     }
++    buildFeatures {
++        viewBinding = true
++    }
+ }
+ 
+ dependencies {
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index e76c72d..1e57d7c 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -11,8 +11,9 @@
+         android:roundIcon="@mipmap/ic_launcher_round"
+         android:supportsRtl="true"
+         android:theme="@style/Theme.JjanChall">
++        <!-- 앱 시작 화면: 로그인 (자동 로그인이면 바로 메인으로 넘어가요) -->
+         <activity
+-            android:name=".MainActivity"
++            android:name=".ui.login.LoginActivity"
+             android:exported="true"
+             android:windowSoftInputMode="adjustResize">
+             <intent-filter>
+@@ -21,6 +22,13 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity>
++        <activity
++            android:name=".ui.login.SignupActivity"
++            android:exported="false"
++            android:windowSoftInputMode="adjustResize" />
++        <activity
++            android:name=".ui.main.MainActivity"
++            android:exported="false" />
+     </application>
+ 
+ </manifest>
+diff --git a/app/src/main/java/com/app/jjanchall/MainActivity.kt b/app/src/main/java/com/app/jjanchall/MainActivity.kt
+deleted file mode 100644
+index c530c5f..0000000
+--- a/app/src/main/java/com/app/jjanchall/MainActivity.kt
++++ /dev/null
+@@ -1,20 +0,0 @@
+-package com.app.jjanchall
+-
+-import android.os.Bundle
+-import androidx.activity.enableEdgeToEdge
+-import androidx.appcompat.app.AppCompatActivity
+-import androidx.core.view.ViewCompat
+-import androidx.core.view.WindowInsetsCompat
+-
+-class MainActivity : AppCompatActivity() {
+-    override fun onCreate(savedInstanceState: Bundle?) {
+-        super.onCreate(savedInstanceState)
+-        enableEdgeToEdge()
+-        setContentView(R.layout.activity_main)
+-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+-            insets
+-        }
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/app/jjanchall/data/local/AuthPreferences.kt b/app/src/main/java/com/app/jjanchall/data/local/AuthPreferences.kt
+new file mode 100644
+index 0000000..a148471
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/data/local/AuthPreferences.kt
+@@ -0,0 +1,78 @@
++package com.app.jjanchall.data.local
++
++import android.content.Context
++import androidx.core.content.edit
++import com.app.jjanchall.util.AuthValidator
++import com.app.jjanchall.util.PasswordHasher
++
++/**
++ * SharedPreferences에 계정과 로그인 상태를 저장해요. (서버 없이 기기 안에만 저장)
++ *
++ * 저장 형태 (파일 이름: jjanchall_auth)
++ *   account_<이메일>_nickname / _salt / _hash  → 계정 정보 (비밀번호는 해시만 저장)
++ *   session_email                             → 지금 로그인한 이메일
++ *   auto_login                                → 자동 로그인 체크 여부
++ */
++class AuthPreferences(context: Context) {
++
++    enum class SignUpResult { SUCCESS, DUPLICATE_EMAIL }
++
++    private val prefs = context.applicationContext
++        .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
++
++    fun isRegistered(email: String): Boolean =
++        prefs.contains(key(email, KEY_HASH))
++
++    fun signUp(nickname: String, email: String, password: String): SignUpResult {
++        if (isRegistered(email)) return SignUpResult.DUPLICATE_EMAIL
++
++        val salt = PasswordHasher.newSalt()
++        prefs.edit {
++            putString(key(email, KEY_NICKNAME), nickname.trim())
++            putString(key(email, KEY_SALT), salt)
++            putString(key(email, KEY_HASH), PasswordHasher.hash(password, salt))
++        }
++        return SignUpResult.SUCCESS
++    }
++
++    /** 이메일·비밀번호가 맞으면 로그인 상태를 저장하고 true를 돌려줘요. */
++    fun login(email: String, password: String, autoLogin: Boolean): Boolean {
++        val salt = prefs.getString(key(email, KEY_SALT), null) ?: return false
++        val hash = prefs.getString(key(email, KEY_HASH), null) ?: return false
++        if (!PasswordHasher.matches(password, salt, hash)) return false
++
++        prefs.edit {
++            putString(KEY_SESSION_EMAIL, AuthValidator.normalizeEmail(email))
++            putBoolean(KEY_AUTO_LOGIN, autoLogin)
++        }
++        return true
++    }
++
++    fun logout() {
++        prefs.edit {
++            remove(KEY_SESSION_EMAIL)
++            remove(KEY_AUTO_LOGIN)
++        }
++    }
++
++    /** 앱을 다시 켰을 때 로그인 화면을 건너뛸지 */
++    fun shouldAutoLogin(): Boolean =
++        prefs.getBoolean(KEY_AUTO_LOGIN, false) && currentEmail() != null
++
++    fun currentEmail(): String? = prefs.getString(KEY_SESSION_EMAIL, null)
++
++    fun currentNickname(): String? =
++        currentEmail()?.let { prefs.getString(key(it, KEY_NICKNAME), null) }
++
++    private fun key(email: String, field: String) =
++        "account_${AuthValidator.normalizeEmail(email)}_$field"
++
++    companion object {
++        private const val PREF_NAME = "jjanchall_auth"
++        private const val KEY_NICKNAME = "nickname"
++        private const val KEY_SALT = "salt"
++        private const val KEY_HASH = "hash"
++        private const val KEY_SESSION_EMAIL = "session_email"
++        private const val KEY_AUTO_LOGIN = "auto_login"
++    }
++}
+diff --git a/app/src/main/java/com/app/jjanchall/ui/challenge/.gitkeep b/app/src/main/java/com/app/jjanchall/ui/challenge/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/src/main/java/com/app/jjanchall/ui/home/.gitkeep b/app/src/main/java/com/app/jjanchall/ui/home/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/src/main/java/com/app/jjanchall/ui/login/LoginActivity.kt b/app/src/main/java/com/app/jjanchall/ui/login/LoginActivity.kt
+new file mode 100644
+index 0000000..2eaab0f
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/ui/login/LoginActivity.kt
+@@ -0,0 +1,87 @@
++package com.app.jjanchall.ui.login
++
++import android.content.Intent
++import android.os.Bundle
++import androidx.activity.enableEdgeToEdge
++import androidx.appcompat.app.AppCompatActivity
++import androidx.core.widget.doAfterTextChanged
++import com.app.jjanchall.R
++import com.app.jjanchall.data.local.AuthPreferences
++import com.app.jjanchall.databinding.ActivityLoginBinding
++import com.app.jjanchall.ui.main.MainActivity
++import com.app.jjanchall.util.AuthValidator
++import com.app.jjanchall.util.applySystemBarsPadding
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++
++/** LOGIN-01 로그인 */
++class LoginActivity : AppCompatActivity() {
++
++    private lateinit var binding: ActivityLoginBinding
++    private lateinit var authPrefs: AuthPreferences
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        authPrefs = AuthPreferences(this)
++
++        // 자동 로그인: 로그인 화면을 보여주지 않고 바로 메인으로
++        if (authPrefs.shouldAutoLogin()) {
++            goToMain()
++            return
++        }
++
++        enableEdgeToEdge()
++        binding = ActivityLoginBinding.inflate(layoutInflater)
++        setContentView(binding.root)
++        binding.root.applySystemBarsPadding()
++
++        // 다시 입력하면 에러 문구 지우기
++        binding.etEmail.doAfterTextChanged { binding.tilEmail.error = null }
++        binding.etPassword.doAfterTextChanged { binding.tilPassword.error = null }
++
++        binding.btnLogin.setOnClickListener { attemptLogin() }
++        binding.tvGoSignup.setOnClickListener {
++            startActivity(Intent(this, SignupActivity::class.java))
++        }
++    }
++
++    private fun attemptLogin() {
++        val email = binding.etEmail.text?.toString().orEmpty().trim()
++        val password = binding.etPassword.text?.toString().orEmpty()
++
++        var valid = true
++        when {
++            email.isEmpty() -> {
++                binding.tilEmail.error = getString(R.string.error_email_empty)
++                valid = false
++            }
++            !AuthValidator.isValidEmail(email) -> {
++                binding.tilEmail.error = getString(R.string.error_email_invalid)
++                valid = false
++            }
++        }
++        if (password.isEmpty()) {
++            binding.tilPassword.error = getString(R.string.error_password_empty)
++            valid = false
++        }
++        if (!valid) return
++
++        if (authPrefs.login(email, password, binding.cbAutoLogin.isChecked)) {
++            goToMain()
++        } else {
++            showLoginFailDialog()
++        }
++    }
++
++    private fun showLoginFailDialog() {
++        MaterialAlertDialogBuilder(this)
++            .setTitle(R.string.login_fail_title)
++            .setMessage(R.string.login_fail_message)
++            .setPositiveButton(R.string.common_confirm, null)
++            .show()
++    }
++
++    private fun goToMain() {
++        startActivity(Intent(this, MainActivity::class.java))
++        finish()
++    }
++}
+diff --git a/app/src/main/java/com/app/jjanchall/ui/login/SignupActivity.kt b/app/src/main/java/com/app/jjanchall/ui/login/SignupActivity.kt
+new file mode 100644
+index 0000000..12aac0d
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/ui/login/SignupActivity.kt
+@@ -0,0 +1,107 @@
++package com.app.jjanchall.ui.login
++
++import android.content.Intent
++import android.os.Bundle
++import android.widget.Toast
++import androidx.activity.enableEdgeToEdge
++import androidx.appcompat.app.AppCompatActivity
++import androidx.core.widget.doAfterTextChanged
++import com.app.jjanchall.R
++import com.app.jjanchall.data.local.AuthPreferences
++import com.app.jjanchall.databinding.ActivitySignupBinding
++import com.app.jjanchall.ui.main.MainActivity
++import com.app.jjanchall.util.AuthValidator
++import com.app.jjanchall.util.applySystemBarsPadding
++
++/** LOGIN-02 회원가입 */
++class SignupActivity : AppCompatActivity() {
++
++    private lateinit var binding: ActivitySignupBinding
++    private lateinit var authPrefs: AuthPreferences
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        enableEdgeToEdge()
++        binding = ActivitySignupBinding.inflate(layoutInflater)
++        setContentView(binding.root)
++        binding.root.applySystemBarsPadding()
++        authPrefs = AuthPreferences(this)
++
++        // <include>로 가져온 공통 상단 바
++        binding.appBar.tvAppBarTitle.setText(R.string.signup_title)
++        binding.appBar.btnBack.setOnClickListener { finish() }
++
++        binding.etNickname.doAfterTextChanged { binding.tilNickname.error = null }
++        binding.etEmail.doAfterTextChanged { binding.tilEmail.error = null }
++        binding.etPassword.doAfterTextChanged { binding.tilPassword.error = null }
++        binding.etPasswordConfirm.doAfterTextChanged { binding.tilPasswordConfirm.error = null }
++
++        binding.btnSignup.setOnClickListener { attemptSignup() }
++    }
++
++    private fun attemptSignup() {
++        val nickname = binding.etNickname.text?.toString().orEmpty().trim()
++        val email = binding.etEmail.text?.toString().orEmpty().trim()
++        val password = binding.etPassword.text?.toString().orEmpty()
++        val passwordConfirm = binding.etPasswordConfirm.text?.toString().orEmpty()
++
++        var valid = true
++
++        when {
++            nickname.isEmpty() -> {
++                binding.tilNickname.error = getString(R.string.error_nickname_empty)
++                valid = false
++            }
++            !AuthValidator.isValidNickname(nickname) -> {
++                binding.tilNickname.error = getString(R.string.error_nickname_length)
++                valid = false
++            }
++        }
++
++        when {
++            email.isEmpty() -> {
++                binding.tilEmail.error = getString(R.string.error_email_empty)
++                valid = false
++            }
++            !AuthValidator.isValidEmail(email) -> {
++                binding.tilEmail.error = getString(R.string.error_email_invalid)
++                valid = false
++            }
++            authPrefs.isRegistered(email) -> {
++                binding.tilEmail.error = getString(R.string.error_email_duplicate)
++                valid = false
++            }
++        }
++
++        when {
++            password.isEmpty() -> {
++                binding.tilPassword.error = getString(R.string.error_password_empty)
++                valid = false
++            }
++            !AuthValidator.isValidPassword(password) -> {
++                binding.tilPassword.error = getString(R.string.error_password_short)
++                valid = false
++            }
++        }
++
++        if (passwordConfirm != password) {
++            binding.tilPasswordConfirm.error = getString(R.string.error_password_mismatch)
++            valid = false
++        }
++
++        if (!valid) return
++
++        if (authPrefs.signUp(nickname, email, password) == AuthPreferences.SignUpResult.DUPLICATE_EMAIL) {
++            binding.tilEmail.error = getString(R.string.error_email_duplicate)
++            return
++        }
++
++        // 가입하면 바로 로그인한 상태로 메인으로 이동 (자동 로그인은 끔)
++        authPrefs.login(email, password, autoLogin = false)
++        Toast.makeText(this, getString(R.string.signup_done, nickname), Toast.LENGTH_SHORT).show()
++
++        val intent = Intent(this, MainActivity::class.java)
++            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
++        startActivity(intent)
++    }
++}
+diff --git a/app/src/main/java/com/app/jjanchall/ui/main/MainActivity.kt b/app/src/main/java/com/app/jjanchall/ui/main/MainActivity.kt
+new file mode 100644
+index 0000000..a4ad279
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/ui/main/MainActivity.kt
+@@ -0,0 +1,51 @@
++package com.app.jjanchall.ui.main
++
++import android.content.Intent
++import android.os.Bundle
++import androidx.activity.enableEdgeToEdge
++import androidx.appcompat.app.AppCompatActivity
++import com.app.jjanchall.R
++import com.app.jjanchall.data.local.AuthPreferences
++import com.app.jjanchall.databinding.ActivityMainBinding
++import com.app.jjanchall.ui.login.LoginActivity
++import com.app.jjanchall.util.applySystemBarsPadding
++
++/**
++ * 메인 화면 (임시)
++ * 지금은 로그인 확인용이고, 나중에 하단 탭 + 홈/기록/챌린지/설정 Fragment를 담는 화면이 돼요.
++ */
++class MainActivity : AppCompatActivity() {
++
++    private lateinit var binding: ActivityMainBinding
++    private lateinit var authPrefs: AuthPreferences
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        authPrefs = AuthPreferences(this)
++
++        // 로그인 정보가 없으면 로그인 화면으로
++        val nickname = authPrefs.currentNickname()
++        if (nickname == null) {
++            goToLogin()
++            return
++        }
++
++        enableEdgeToEdge()
++        binding = ActivityMainBinding.inflate(layoutInflater)
++        setContentView(binding.root)
++        binding.root.applySystemBarsPadding()
++
++        binding.tvWelcome.text = getString(R.string.main_welcome, nickname)
++        binding.btnLogout.setOnClickListener {
++            authPrefs.logout()
++            goToLogin()
++        }
++    }
++
++    private fun goToLogin() {
++        val intent = Intent(this, LoginActivity::class.java)
++            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
++        startActivity(intent)
++        finish()
++    }
++}
+diff --git a/app/src/main/java/com/app/jjanchall/ui/receipt/.gitkeep b/app/src/main/java/com/app/jjanchall/ui/receipt/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/src/main/java/com/app/jjanchall/ui/record/.gitkeep b/app/src/main/java/com/app/jjanchall/ui/record/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/src/main/java/com/app/jjanchall/ui/setting/.gitkeep b/app/src/main/java/com/app/jjanchall/ui/setting/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/src/main/java/com/app/jjanchall/util/AuthValidator.kt b/app/src/main/java/com/app/jjanchall/util/AuthValidator.kt
+new file mode 100644
+index 0000000..1bb0a0c
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/util/AuthValidator.kt
+@@ -0,0 +1,24 @@
++package com.app.jjanchall.util
++
++/**
++ * 로그인·회원가입 입력값 검사.
++ * 안드로이드 클래스를 쓰지 않아서 단위 테스트로 바로 확인할 수 있어요.
++ */
++object AuthValidator {
++
++    const val PASSWORD_MIN_LENGTH = 6
++    const val NICKNAME_MIN_LENGTH = 2
++    const val NICKNAME_MAX_LENGTH = 10
++
++    private val EMAIL_REGEX = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
++
++    /** 앞뒤 공백을 지우고 소문자로 맞춘 이메일. 계정을 찾을 때 이 값을 키로 써요. */
++    fun normalizeEmail(email: String): String = email.trim().lowercase()
++
++    fun isValidEmail(email: String): Boolean = EMAIL_REGEX.matches(email.trim())
++
++    fun isValidPassword(password: String): Boolean = password.length >= PASSWORD_MIN_LENGTH
++
++    fun isValidNickname(nickname: String): Boolean =
++        nickname.trim().length in NICKNAME_MIN_LENGTH..NICKNAME_MAX_LENGTH
++}
+diff --git a/app/src/main/java/com/app/jjanchall/util/Insets.kt b/app/src/main/java/com/app/jjanchall/util/Insets.kt
+new file mode 100644
+index 0000000..a9e75d9
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/util/Insets.kt
+@@ -0,0 +1,18 @@
++package com.app.jjanchall.util
++
++import android.view.View
++import androidx.core.view.ViewCompat
++import androidx.core.view.WindowInsetsCompat
++
++/**
++ * 화면이 상태바·내비게이션바·키보드 밑으로 들어가지 않도록 여백을 넣어요.
++ * (enableEdgeToEdge()를 쓴 화면의 루트 뷰에서 호출)
++ */
++fun View.applySystemBarsPadding() {
++    ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
++        val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
++        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
++        v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
++        insets
++    }
++}
+diff --git a/app/src/main/java/com/app/jjanchall/util/PasswordHasher.kt b/app/src/main/java/com/app/jjanchall/util/PasswordHasher.kt
+new file mode 100644
+index 0000000..d273e5f
+--- /dev/null
++++ b/app/src/main/java/com/app/jjanchall/util/PasswordHasher.kt
+@@ -0,0 +1,33 @@
++package com.app.jjanchall.util
++
++import java.security.MessageDigest
++import java.security.SecureRandom
++import java.util.Base64
++
++/**
++ * 비밀번호를 그대로 저장하지 않고 "소금(salt) + SHA-256 해시"로 바꿔 저장해요.
++ * 같은 비밀번호라도 계정마다 salt가 달라서 저장값이 달라져요.
++ */
++object PasswordHasher {
++
++    private const val SALT_BYTES = 16
++
++    fun newSalt(): String {
++        val bytes = ByteArray(SALT_BYTES)
++        SecureRandom().nextBytes(bytes)
++        return Base64.getEncoder().encodeToString(bytes)
++    }
++
++    fun hash(password: String, salt: String): String {
++        val digest = MessageDigest.getInstance("SHA-256")
++        digest.update(Base64.getDecoder().decode(salt))
++        val hashed = digest.digest(password.toByteArray(Charsets.UTF_8))
++        return Base64.getEncoder().encodeToString(hashed)
++    }
++
++    fun matches(password: String, salt: String, expectedHash: String): Boolean =
++        MessageDigest.isEqual(
++            hash(password, salt).toByteArray(Charsets.UTF_8),
++            expectedHash.toByteArray(Charsets.UTF_8),
++        )
++}
+diff --git a/app/src/main/res/layout/activity_login.xml b/app/src/main/res/layout/activity_login.xml
+new file mode 100644
+index 0000000..f3964fd
+--- /dev/null
++++ b/app/src/main/res/layout/activity_login.xml
+@@ -0,0 +1,140 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- LOGIN-01 로그인 -->
++<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    xmlns:tools="http://schemas.android.com/tools"
++    android:id="@+id/root"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@color/bg_default"
++    android:fillViewport="true"
++    tools:context=".ui.login.LoginActivity">
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="vertical"
++        android:paddingStart="@dimen/screen_padding"
++        android:paddingTop="72dp"
++        android:paddingEnd="@dimen/screen_padding"
++        android:paddingBottom="@dimen/spacing_2xl">
++
++        <!-- 로고 + 앱 이름 + 소개 -->
++        <ImageView
++            android:layout_width="@dimen/size_logo"
++            android:layout_height="@dimen/size_logo"
++            android:layout_gravity="center_horizontal"
++            android:contentDescription="@string/common_logo"
++            android:src="@drawable/img_logo" />
++
++        <TextView
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_gravity="center_horizontal"
++            android:layout_marginTop="@dimen/spacing_lg"
++            android:text="@string/app_name"
++            android:textAppearance="@style/TextAppearance.JjanChall.Display" />
++
++        <TextView
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_gravity="center_horizontal"
++            android:layout_marginTop="@dimen/spacing_sm"
++            android:text="@string/login_tagline"
++            android:textAppearance="@style/TextAppearance.JjanChall.Body2"
++            android:textColor="@color/text_secondary" />
++
++        <!-- 이메일 -->
++        <TextView
++            style="@style/Widget.JjanChall.InputLabel"
++            android:layout_marginTop="40dp"
++            android:labelFor="@id/et_email"
++            android:text="@string/login_email" />
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:id="@+id/til_email"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/et_email"
++                style="@style/Widget.JjanChall.EditText"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:autofillHints="emailAddress"
++                android:hint="@string/login_email_hint"
++                android:imeOptions="actionNext"
++                android:inputType="textEmailAddress" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <!-- 비밀번호 -->
++        <TextView
++            style="@style/Widget.JjanChall.InputLabel"
++            android:layout_marginTop="@dimen/spacing_lg"
++            android:labelFor="@id/et_password"
++            android:text="@string/login_password" />
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:id="@+id/til_password"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            app:endIconMode="password_toggle">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/et_password"
++                style="@style/Widget.JjanChall.EditText"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:autofillHints="password"
++                android:hint="@string/login_password_hint"
++                android:imeOptions="actionDone"
++                android:inputType="textPassword" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.checkbox.MaterialCheckBox
++            android:id="@+id/cb_auto_login"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_marginStart="-6dp"
++            android:layout_marginTop="@dimen/spacing_sm"
++            android:text="@string/login_auto_login" />
++
++        <com.google.android.material.button.MaterialButton
++            android:id="@+id/btn_login"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="@dimen/spacing_lg"
++            android:text="@string/login_button" />
++
++        <!-- 회원가입으로 이동 -->
++        <LinearLayout
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_gravity="center_horizontal"
++            android:layout_marginTop="@dimen/spacing_lg"
++            android:gravity="center_vertical"
++            android:orientation="horizontal">
++
++            <TextView
++                android:layout_width="wrap_content"
++                android:layout_height="wrap_content"
++                android:text="@string/login_no_account"
++                android:textAppearance="@style/TextAppearance.JjanChall.Body2"
++                android:textColor="@color/text_secondary" />
++
++            <TextView
++                android:id="@+id/tv_go_signup"
++                android:layout_width="wrap_content"
++                android:layout_height="@dimen/size_touch_min"
++                android:background="?attr/selectableItemBackground"
++                android:gravity="center"
++                android:paddingStart="@dimen/spacing_sm"
++                android:paddingEnd="@dimen/spacing_sm"
++                android:text="@string/login_go_signup"
++                android:textAppearance="@style/TextAppearance.JjanChall.Body2"
++                android:textColor="@color/text_brand"
++                android:textStyle="bold" />
++        </LinearLayout>
++
++    </LinearLayout>
++</ScrollView>
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+index 24d17df..b0a802e 100644
+--- a/app/src/main/res/layout/activity_main.xml
++++ b/app/src/main/res/layout/activity_main.xml
+@@ -1,19 +1,38 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:app="http://schemas.android.com/apk/res-auto"
++<!-- 메인 (임시): 로그인 확인용. 나중에 하단 탭 + Fragment 컨테이너로 바뀌어요. -->
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools"
+-    android:id="@+id/main"
++    android:id="@+id/root"
+     android:layout_width="match_parent"
+     android:layout_height="match_parent"
+-    tools:context=".MainActivity">
++    android:background="@color/bg_default"
++    android:gravity="center"
++    android:orientation="vertical"
++    android:padding="@dimen/screen_padding"
++    tools:context=".ui.main.MainActivity">
+ 
+     <TextView
++        android:id="@+id/tv_welcome"
+         android:layout_width="wrap_content"
+         android:layout_height="wrap_content"
+-        android:text="Hello World!"
+-        app:layout_constraintBottom_toBottomOf="parent"
+-        app:layout_constraintEnd_toEndOf="parent"
+-        app:layout_constraintStart_toStartOf="parent"
+-        app:layout_constraintTop_toTopOf="parent" />
++        android:textAppearance="@style/TextAppearance.JjanChall.Title"
++        tools:text="짠순이님, 반가워요!" />
+ 
+-</androidx.constraintlayout.widget.ConstraintLayout>
++    <TextView
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="@dimen/spacing_sm"
++        android:gravity="center"
++        android:text="@string/main_placeholder"
++        android:textAppearance="@style/TextAppearance.JjanChall.Body2"
++        android:textColor="@color/text_secondary" />
++
++    <com.google.android.material.button.MaterialButton
++        android:id="@+id/btn_logout"
++        style="@style/Widget.JjanChall.Button.Secondary"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="@dimen/spacing_2xl"
++        android:text="@string/main_logout" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/layout/activity_signup.xml b/app/src/main/res/layout/activity_signup.xml
+new file mode 100644
+index 0000000..ac54176
+--- /dev/null
++++ b/app/src/main/res/layout/activity_signup.xml
+@@ -0,0 +1,140 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- LOGIN-02 회원가입 -->
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    xmlns:tools="http://schemas.android.com/tools"
++    android:id="@+id/root"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@color/bg_default"
++    android:orientation="vertical"
++    tools:context=".ui.login.SignupActivity">
++
++    <!-- 공통 상단 바 재사용 -->
++    <include
++        android:id="@+id/app_bar"
++        layout="@layout/view_app_bar" />
++
++    <ScrollView
++        android:layout_width="match_parent"
++        android:layout_height="0dp"
++        android:layout_weight="1">
++
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="vertical"
++            android:paddingStart="@dimen/screen_padding"
++            android:paddingTop="@dimen/spacing_sm"
++            android:paddingEnd="@dimen/screen_padding"
++            android:paddingBottom="@dimen/spacing_2xl">
++
++            <!-- 닉네임 -->
++            <TextView
++                style="@style/Widget.JjanChall.InputLabel"
++                android:labelFor="@id/et_nickname"
++                android:text="@string/signup_nickname" />
++
++            <com.google.android.material.textfield.TextInputLayout
++                android:id="@+id/til_nickname"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                app:helperText="@string/signup_nickname_helper">
++
++                <com.google.android.material.textfield.TextInputEditText
++                    android:id="@+id/et_nickname"
++                    style="@style/Widget.JjanChall.EditText"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:hint="@string/signup_nickname_hint"
++                    android:imeOptions="actionNext"
++                    android:inputType="text"
++                    android:maxLength="10" />
++            </com.google.android.material.textfield.TextInputLayout>
++
++            <!-- 이메일 -->
++            <TextView
++                style="@style/Widget.JjanChall.InputLabel"
++                android:layout_marginTop="@dimen/spacing_lg"
++                android:labelFor="@id/et_email"
++                android:text="@string/login_email" />
++
++            <com.google.android.material.textfield.TextInputLayout
++                android:id="@+id/til_email"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content">
++
++                <com.google.android.material.textfield.TextInputEditText
++                    android:id="@+id/et_email"
++                    style="@style/Widget.JjanChall.EditText"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:autofillHints="emailAddress"
++                    android:hint="@string/login_email_hint"
++                    android:imeOptions="actionNext"
++                    android:inputType="textEmailAddress" />
++            </com.google.android.material.textfield.TextInputLayout>
++
++            <!-- 비밀번호 -->
++            <TextView
++                style="@style/Widget.JjanChall.InputLabel"
++                android:layout_marginTop="@dimen/spacing_lg"
++                android:labelFor="@id/et_password"
++                android:text="@string/login_password" />
++
++            <com.google.android.material.textfield.TextInputLayout
++                android:id="@+id/til_password"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                app:endIconMode="password_toggle"
++                app:helperText="@string/signup_password_helper">
++
++                <com.google.android.material.textfield.TextInputEditText
++                    android:id="@+id/et_password"
++                    style="@style/Widget.JjanChall.EditText"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:autofillHints="newPassword"
++                    android:hint="@string/login_password_hint"
++                    android:imeOptions="actionNext"
++                    android:inputType="textPassword" />
++            </com.google.android.material.textfield.TextInputLayout>
++
++            <!-- 비밀번호 확인 -->
++            <TextView
++                style="@style/Widget.JjanChall.InputLabel"
++                android:layout_marginTop="@dimen/spacing_lg"
++                android:labelFor="@id/et_password_confirm"
++                android:text="@string/signup_password_confirm" />
++
++            <com.google.android.material.textfield.TextInputLayout
++                android:id="@+id/til_password_confirm"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                app:endIconMode="password_toggle">
++
++                <com.google.android.material.textfield.TextInputEditText
++                    android:id="@+id/et_password_confirm"
++                    style="@style/Widget.JjanChall.EditText"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:autofillHints="newPassword"
++                    android:hint="@string/signup_password_confirm_hint"
++                    android:imeOptions="actionDone"
++                    android:inputType="textPassword" />
++            </com.google.android.material.textfield.TextInputLayout>
++
++        </LinearLayout>
++    </ScrollView>
++
++    <!-- 하단 고정 버튼 -->
++    <com.google.android.material.button.MaterialButton
++        android:id="@+id/btn_signup"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginStart="@dimen/screen_padding"
++        android:layout_marginEnd="@dimen/screen_padding"
++        android:layout_marginBottom="@dimen/spacing_lg"
++        android:text="@string/signup_button" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/layout/view_app_bar.xml b/app/src/main/res/layout/view_app_bar.xml
+new file mode 100644
+index 0000000..5e60406
+--- /dev/null
++++ b/app/src/main/res/layout/view_app_bar.xml
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    공통 상단 바 (피그마 AppBar 컴포넌트)
++    다른 화면에서 <include layout="@layout/view_app_bar" /> 로 재사용해요.
++    제목은 코드에서 binding.appBar.tvAppBarTitle.text 로 바꿔요.
++-->
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:tools="http://schemas.android.com/tools"
++    android:layout_width="match_parent"
++    android:layout_height="@dimen/size_app_bar"
++    android:background="@color/bg_default"
++    android:gravity="center_vertical"
++    android:orientation="horizontal"
++    android:paddingStart="@dimen/spacing_xs"
++    android:paddingEnd="@dimen/spacing_lg">
++
++    <ImageButton
++        android:id="@+id/btn_back"
++        android:layout_width="@dimen/size_touch_min"
++        android:layout_height="@dimen/size_touch_min"
++        android:background="?attr/selectableItemBackgroundBorderless"
++        android:contentDescription="@string/common_back"
++        android:src="@drawable/ic_arrow_back" />
++
++    <TextView
++        android:id="@+id/tv_app_bar_title"
++        style="@style/Widget.JjanChall.AppBarTitle"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_marginStart="@dimen/spacing_xs"
++        android:layout_weight="1"
++        tools:text="회원가입" />
++
++</LinearLayout>
+diff --git a/app/src/test/java/com/app/jjanchall/util/AuthValidatorTest.kt b/app/src/test/java/com/app/jjanchall/util/AuthValidatorTest.kt
+new file mode 100644
+index 0000000..d590a5a
+--- /dev/null
++++ b/app/src/test/java/com/app/jjanchall/util/AuthValidatorTest.kt
+@@ -0,0 +1,39 @@
++package com.app.jjanchall.util
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AuthValidatorTest {
++
++    @Test
++    fun email() {
++        assertTrue(AuthValidator.isValidEmail("example@sungshin.ac.kr"))
++        assertTrue(AuthValidator.isValidEmail("  a.b+c@test.com "))
++        assertFalse(AuthValidator.isValidEmail(""))
++        assertFalse(AuthValidator.isValidEmail("example"))
++        assertFalse(AuthValidator.isValidEmail("example@"))
++        assertFalse(AuthValidator.isValidEmail("example@sungshin"))
++    }
++
++    @Test
++    fun normalizeEmail() {
++        assertEquals("abc@test.com", AuthValidator.normalizeEmail("  ABC@Test.com "))
++    }
++
++    @Test
++    fun password() {
++        assertFalse(AuthValidator.isValidPassword("12345"))
++        assertTrue(AuthValidator.isValidPassword("123456"))
++    }
++
++    @Test
++    fun nickname() {
++        assertFalse(AuthValidator.isValidNickname("짠"))
++        assertTrue(AuthValidator.isValidNickname("짠순이"))
++        assertTrue(AuthValidator.isValidNickname("가나다라마바사아자차"))
++        assertFalse(AuthValidator.isValidNickname("가나다라마바사아자차카"))
++        assertFalse(AuthValidator.isValidNickname("   "))
++    }
++}
+diff --git a/app/src/test/java/com/app/jjanchall/util/PasswordHasherTest.kt b/app/src/test/java/com/app/jjanchall/util/PasswordHasherTest.kt
+new file mode 100644
+index 0000000..7e4e7ac
+--- /dev/null
++++ b/app/src/test/java/com/app/jjanchall/util/PasswordHasherTest.kt
+@@ -0,0 +1,33 @@
++package com.app.jjanchall.util
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class PasswordHasherTest {
++
++    @Test
++    fun sameSaltSameHash() {
++        val salt = PasswordHasher.newSalt()
++        assertEquals(PasswordHasher.hash("pw1234", salt), PasswordHasher.hash("pw1234", salt))
++    }
++
++    @Test
++    fun differentSaltDifferentHash() {
++        assertNotEquals(
++            PasswordHasher.hash("pw1234", PasswordHasher.newSalt()),
++            PasswordHasher.hash("pw1234", PasswordHasher.newSalt()),
++        )
++    }
++
++    @Test
++    fun matches() {
++        val salt = PasswordHasher.newSalt()
++        val hash = PasswordHasher.hash("pw1234", salt)
++        assertTrue(PasswordHasher.matches("pw1234", salt, hash))
++        assertFalse(PasswordHasher.matches("pw12345", salt, hash))
++        assertFalse(hash.contains("pw1234"))
++    }
++}
+-- 
+2.43.0
+
