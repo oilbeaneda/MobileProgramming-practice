@@ -1,18 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <EditText
-        android:id="@+id/edtText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:hint="@string/edt_hint"
-        android:inputType="text" />
+    <!-- 기준 위젯: 화면 중앙, 가로세로 150dp -->
+    <Button
+        android:id="@+id/baseBtn"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
+        android:layout_centerInParent="true"
+        android:backgroundTint="#D7E4BD"
+        android:text="기준 위젯"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
 
-</LinearLayout>
+    <!-- 1번: 왼쪽 끝, 기준 위젯 윗변에 맞춤 -->
+    <Button
+        android:id="@+id/btn1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignTop="@id/baseBtn"
+        android:backgroundTint="#D7E4BD"
+        android:text="1번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+    <!-- 2번: 왼쪽 끝, 기준 위젯 아랫변에 맞춤 -->
+    <Button
+        android:id="@+id/btn2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignBottom="@id/baseBtn"
+        android:backgroundTint="#D7E4BD"
+        android:text="2번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+    <!-- 3번: 아래쪽 끝, 기준 위젯의 왼쪽 -->
+    <Button
+        android:id="@+id/btn3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_toLeftOf="@id/baseBtn"
+        android:backgroundTint="#D7E4BD"
+        android:text="3번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+    <!-- 4번: 위쪽 끝, 기준 위젯 왼쪽 변에 맞춤 -->
+    <Button
+        android:id="@+id/btn4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_alignLeft="@id/baseBtn"
+        android:backgroundTint="#D7E4BD"
+        android:text="4번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+    <!-- 5번: 아래쪽 끝, 기준 위젯 오른쪽 변에 맞춤 -->
+    <Button
+        android:id="@+id/btn5"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignRight="@id/baseBtn"
+        android:backgroundTint="#D7E4BD"
+        android:text="5번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+    <!-- 6번: 오른쪽 끝, 기준 위젯의 위쪽 -->
+    <Button
+        android:id="@+id/btn6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/baseBtn"
+        android:layout_alignParentRight="true"
+        android:backgroundTint="#D7E4BD"
+        android:text="6번"
+        android:textColor="#000000"
+        app:cornerRadius="0dp" />
+
+</RelativeLayout>
